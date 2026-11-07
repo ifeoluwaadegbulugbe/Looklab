@@ -1,26 +1,103 @@
 @import "tailwindcss";
 
+/* LookLab design tokens. Purple = Try it on, everywhere. Pink = favourites and active states. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ll-bg: #fff8f0;
+  --ll-surface: #ffffff;
+  --ll-ink: #1a1325;
+  --ll-primary: #6c2bff;
+  --ll-secondary: #ff2e93;
+  --ll-lavender: #ede4ff;
+  --ll-tangerine: #ff7a1a;
+  --ll-butter: #ffe66d;
+  --ll-lime: #b6f23c;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-background: var(--ll-bg);
+  --color-foreground: var(--ll-ink);
+  --color-bg: var(--ll-bg);
+  --color-surface: var(--ll-surface);
+  --color-ink: var(--ll-ink);
+  --color-primary: var(--ll-primary);
+  --color-secondary: var(--ll-secondary);
+  --color-lavender: var(--ll-lavender);
+  --color-tangerine: var(--ll-tangerine);
+  --color-butter: var(--ll-butter);
+  --color-lime: var(--ll-lime);
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), var(--font-dm-sans), ui-sans-serif, sans-serif;
+  --radius-card: 24px;
+  --radius-sheet: 28px;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--ll-bg);
+  color: var(--ll-ink);
 }
+
+/* Try-on: scanning line over the shopper's photo while generating. */
+@keyframes looklab-scan {
+  0% { top: 0; }
+  50% { top: calc(100% - 4px); }
+  100% { top: 0; }
+}
+.looklab-scan {
+  top: 0;
+  animation: looklab-scan 2.4s ease-in-out infinite;
+}
+
+/* Result reveal. */
+@keyframes looklab-reveal {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+.looklab-reveal {
+  animation: looklab-reveal 400ms ease-out both;
+}
+
+/* Bottom sheet on mobile. */
+@keyframes looklab-sheet {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+dialog[open] {
+  animation: looklab-sheet 220ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .looklab-scan,
+  .looklab-reveal,
+  dialog[open] {
+    animation: none;
+  }
+  .looklab-scan {
+    top: 50%;
+  }
+}
+
+/* Focus rings: always visible for keyboard users. */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--ll-primary);
+    outline-offset: 2px;
+  }
+}
+
+/* Skeleton shimmer. */
+@keyframes looklab-shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+.looklab-skeleton {
+  background: linear-gradient(90deg, #f3ebe2 25%, #fbf5ee 50%, #f3ebe2 75%);
+  background-size: 200% 100%;
+  animation: looklab-shimmer 1.4s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .looklab-skeleton { animation: none; }
+}
+
+/* Hide scrollbars on horizontal rails while keeping them scrollable. */
+.no-scrollbar { scrollbar-width: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }

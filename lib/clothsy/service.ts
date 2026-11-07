@@ -1,0 +1,195 @@
+import "server-only";
+import { getClothsy } from "@/lib/clothsy/client";
+import { logTryOnError, mapClothsyError, type MappedError } from "@/lib/clothsy/errors";
+import { getAdminSupabase } from "@/lib/supabase/admin";
+import { checkQuota } from "@/lib/quota";
+import type { StartTryOnResponse, TryOnErrorCode, TryOnStatusResponse } from "@/lib/tryon-types";
+
+const PHOTO_TTL_MS = 24 * 60 * 60 * 1000;
+/** Don't reuse a photo id that expires within this window: the try-on could outlive it. */
+const PHOTO_SAFETY_MS = 10 * 60 * 1000;
+const RESULT_TTL_MS = 24 * 60 * 60 * 1000;
+
+export type ServiceResult<T> =
+  | { ok: true; data: T; httpStatus: number }
+  | { ok: false; httpStatus: number; code: TryOnErrorCode; message: string; retryAfter?: number; sessionId?: string };
+
+const fail = (httpStatus: number, code: TryOnErrorCode, message: string, extra: object = {}) =>
+  ({ ok: false as const, httpStatus, code, message, ...extra });
+const fromMapped = (m: MappedError) => fail(m.httpStatus, m.code, m.message, { retryAfter: m.retryAfter });
+
+export interface StartInput {
+  userId: string;
+  productId: string;
+  requestId: string;
+  /** Present when the shopper added a new photo; absent to reuse the last one. */
+  photo?: { bytes: Uint8Array; contentType: "image/jpeg" | "image/png" };
+}
+
+/**
+ * Starts a try-on. The garment URL and title always come from the database by product id,
+ * never from the browser. A pending session row is claimed BEFORE calling the provider, so the
+ * one-pending-per-user unique index makes double clicks and parallel requests cost one credit.
+ */
+export async function startTryOn(input: StartInput): Promise<ServiceResult<StartTryOnResponse>> {
+  const db = getAdminSupabase();
+  const { userId, productId, requestId } = input;
+
+  // Idempotent retry of the same click: return the session it already created.
+  const { data: sameReq } = await db.from("try_on_sessions")
+    .select("id,user_id").eq("request_id", requestId).maybeSingle();
+  if (sameReq) {
+    if (sameReq.user_id !== userId) return fail(400, "INVALID_REQUEST", "Please try again.");
+    return { ok: true, httpStatus: 202, data: { sessionId: sameReq.id, photoExpiresAt: await latestPhotoExpiry(userId) } };
+  }
+
+  // One running try-on at a time: refresh it first in case it has actually finished.
+  const pending = await findPending(userId);
+  if (pending) {
+    const refreshed = await getTryOn(userId, pending.id);
+    if (refreshed.ok && refreshed.data.status === "pending") {
+      return fail(409, "ALREADY_RUNNING", "You already have a try-on in progress.", { sessionId: pending.id });
+    }
+  }
+
+  const quota = await checkQuota(userId);
+  if (!quota.ok) return fail(quota.httpStatus, quota.code, quota.message);
+
+  const { data: product } = await db.from("products")
+    .select("id,title,image_url,tryon_enabled").eq("id", productId).maybeSingle();
+  if (!product || !product.tryon_enabled) {
+    return fail(404, "PRODUCT_UNAVAILABLE", "This item isn't available for virtual try-on.");
+  }
+
+  const clothsy = getClothsy();
+
+  // Photo: upload the new one (free) or reuse the newest id that is still safely valid.
+  let photo: { id: string; imageId: string; expiresAt: string };
+  if (input.photo) {
+    try {
+      const blob = new Blob([input.photo.bytes as BlobPart], { type: input.photo.contentType });
+      const uploaded = await clothsy.images.upload(blob, {
+        filename: input.photo.contentType === "image/png" ? "photo.png" : "photo.jpg",
+        contentType: input.photo.contentType,
+      });
+      // Store our own conservative expiry (upload time + 24 h), never later than the provider's.
+      const expiresAt = new Date(Math.min(Date.parse(uploaded.expiresAt) || Infinity, Date.now() + PHOTO_TTL_MS)).toISOString();
+      const { data: row, error } = await db.from("tryon_photos")
+        .insert({ user_id: userId, clothsy_image_id: uploaded.id, expires_at: expiresAt })
+        .select("id").single();
+      if (error) throw error;
+      photo = { id: row.id, imageId: uploaded.id, expiresAt };
+    } catch (e) {
+      logTryOnError("upload", e);
+      return fromMapped(mapClothsyError(e));
+    }
+  } else {
+    const { data: row } = await db.from("tryon_photos")
+      .select("id,clothsy_image_id,expires_at").eq("user_id", userId)
+      .gt("expires_at", new Date(Date.now() + PHOTO_SAFETY_MS).toISOString())
+      .order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (!row) return fail(409, "PHOTO_REQUIRED", "Add a photo of yourself to try this on.");
+    photo = { id: row.id, imageId: row.clothsy_image_id, expiresAt: row.expires_at };
+  }
+
+  // Claim the single pending slot. The unique indexes reject double clicks and replays.
+  const { data: session, error: claimErr } = await db.from("try_on_sessions")
+    .insert({ user_id: userId, product_id: product.id, request_id: requestId, status: "pending" })
+    .select("id").single();
+  if (claimErr || !session) {
+    if (claimErr?.code === "23505") {
+      const again = await findPending(userId);
+      if (again) return fail(409, "ALREADY_RUNNING", "You already have a try-on in progress.", { sessionId: again.id });
+      const { data: req } = await db.from("try_on_sessions").select("id").eq("request_id", requestId).eq("user_id", userId).maybeSingle();
+      if (req) return { ok: true, httpStatus: 202, data: { sessionId: req.id, photoExpiresAt: photo.expiresAt } };
+    }
+    console.error("[tryon] claim failed");
+    return fail(500, "UNKNOWN", "Something went wrong creating your try-on. Please try again.");
+  }
+
+  try {
+    const created = await clothsy.tryons.create({
+      person: { imageId: photo.imageId },
+      garment: { url: product.image_url },
+      title: product.title.slice(0, 120),
+      consent: true,
+      idempotencyKey: requestId,
+    });
+    await db.from("try_on_sessions").update({ clothsy_job_id: created.id }).eq("id", session.id);
+    return { ok: true, httpStatus: 202, data: { sessionId: session.id, photoExpiresAt: photo.expiresAt } };
+  } catch (e) {
+    logTryOnError("create", e);
+    const mapped = mapClothsyError(e);
+    await finishFailed(session.id, mapped);
+    if (mapped.code === "PHOTO_REQUIRED") await db.from("tryon_photos").delete().eq("id", photo.id);
+    if (mapped.code === "GARMENT_REJECTED") await db.from("products").update({ tryon_enabled: false }).eq("id", product.id);
+    return fromMapped(mapped);
+  }
+}
+
+/** Polls one of the user's sessions. Only the owner can read it; the provider job id never leaves the server. */
+export async function getTryOn(userId: string, sessionId: string): Promise<ServiceResult<TryOnStatusResponse>> {
+  const db = getAdminSupabase();
+  const { data: s } = await db.from("try_on_sessions")
+    .select("id,status,clothsy_job_id,result_url,result_expires_at,error_code,error_message,created_at")
+    .eq("id", sessionId).eq("user_id", userId).maybeSingle();
+  if (!s) return fail(404, "NOT_FOUND", "We couldn't find that try-on.");
+
+  if (s.status === "failed") {
+    return { ok: true, httpStatus: 200, data: { status: "failed", resultUrl: null, code: s.error_code ?? "TRYON_FAILED", message: s.error_message ?? undefined } };
+  }
+  const fresh = s.status === "success" && s.result_url && s.result_expires_at && Date.parse(s.result_expires_at) > Date.now() + 60_000;
+  if (fresh) return { ok: true, httpStatus: 200, data: { status: "success", resultUrl: s.result_url } };
+
+  // Still being created by the POST that claimed it.
+  if (!s.clothsy_job_id) {
+    if (Date.now() - Date.parse(s.created_at) > 2 * 60 * 1000) {
+      await finishFailed(s.id, { code: "UNKNOWN", message: "That try-on didn't start. Please try again." });
+      return { ok: true, httpStatus: 200, data: { status: "failed", resultUrl: null, code: "UNKNOWN", message: "That try-on didn't start. Please try again." } };
+    }
+    return { ok: true, httpStatus: 200, data: { status: "pending", resultUrl: null } };
+  }
+
+  try {
+    const job = await getClothsy().tryons.retrieve(s.clothsy_job_id);
+    if (job.status === "success" && job.resultUrl) {
+      await db.from("try_on_sessions").update({
+        status: "success",
+        result_url: job.resultUrl,
+        result_expires_at: new Date(Date.now() + RESULT_TTL_MS).toISOString(),
+        finished_at: s.status === "pending" ? new Date().toISOString() : undefined,
+      }).eq("id", s.id);
+      return { ok: true, httpStatus: 200, data: { status: "success", resultUrl: job.resultUrl } };
+    }
+    if (job.status === "failed") {
+      // Failed jobs are refunded by the provider. Its message talks about "credits", which shoppers don't have,
+      // so show LookLab's own copy. (Seen so far: safety screening, garment not detected on the photo.)
+      const message =
+        "We couldn't create this preview. It sometimes happens with very revealing cuts or busy photos. Nothing was charged. Try a different piece or photo.";
+      await finishFailed(s.id, { code: "TRYON_FAILED", message });
+      return { ok: true, httpStatus: 200, data: { status: "failed", resultUrl: null, code: "TRYON_FAILED", message } };
+    }
+    return { ok: true, httpStatus: 200, data: { status: "pending", resultUrl: null } };
+  } catch (e) {
+    logTryOnError("retrieve", e);
+    return fromMapped(mapClothsyError(e));
+  }
+}
+
+async function findPending(userId: string) {
+  const { data } = await getAdminSupabase().from("try_on_sessions")
+    .select("id").eq("user_id", userId).eq("status", "pending").maybeSingle();
+  return data;
+}
+
+async function finishFailed(sessionId: string, m: Pick<MappedError, "code" | "message">) {
+  await getAdminSupabase().from("try_on_sessions").update({
+    status: "failed", error_code: m.code, error_message: m.message, finished_at: new Date().toISOString(),
+  }).eq("id", sessionId);
+}
+
+async function latestPhotoExpiry(userId: string) {
+  const { data } = await getAdminSupabase().from("tryon_photos")
+    .select("expires_at").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  return data?.expires_at ?? new Date().toISOString();
+}

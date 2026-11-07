@@ -94,3 +94,37 @@ Findings:
 - Both dresses would show a lot of generated skin: a mini length, then a strapless top with a thigh slit. Working hypothesis: the screening trips on skin the model has to invent, not on dresses as such. Unproven.
 - Failures cost nothing (refunded), so another dress test only costs a credit if it succeeds.
 - Decision for now: **no dresses in the catalogue.** If time allows, test one modest dress (sleeves, knee length or longer, no slit). Add dresses back only if it passes.
+
+## Step 1.5: browser proof (7 Nov 2026)
+Temporary dev-only page `/dev/tryon-test` uses the provider's `createTryOnRoute` + `TryOnButton`, with the garment resolved server-side from Supabase Storage (`catalog/test/*.jpg`).
+- Ife ran it in the browser with her own photo and her own consent tick. Real result displayed in the page.
+- Evidence: job `1ab59bba-b254-4762-b9fa-84691b5c5854`, POST 202 → 4 polls → success. Credits 16 → 15.
+- An earlier attempt in the same session returned **422** after 4 s (rejected photo or garment, no credit charged). The button showed a friendly error.
+- Free checks: cross-origin POST → 403, no consent → 400, unknown product → 404.
+- Finding: the dev server request log prints the provider job id in `GET /api/...?id=`. LookLab's own route (1.6) must poll by **our** session uuid, never the provider job id, so provider ids stay out of URLs and logs.
+- Finding: the provider button has no visible "AI-generated" caption on the result. LookLab's own UI must add it.
+
+## Gate 1 run (7 Nov 2026)
+Ran through LookLab's own `/api/tryon` route. The product was loaded from the database by id (jacket), and Ife ran it in the browser.
+- 2 real try-ons, both `success` (20 s and 18 s), each with a different photo of Ife. Credits went 15 → 13.
+- Double-click on "See it on me": **one POST per attempt** (the button locks on first click). The server and database guard is proven separately by `scripts/route-test.mjs` (repeated requestId → same session; second pending → 409).
+- Server log shows only LookLab session uuids. No Clothsy job ids, photo ids, result URLs or keys.
+- Both results correct: jacket layered over the existing outfit, colour and sleeves faithful.
+- Bad-photo test: skipped by Ife to save credits. The provider rejecting a bad photo was seen in step 1.5 (422, not charged). LookLab's mapping of PERSON_PHOTO_REJECTED to the friendly "clear photo of just you" message is written but not exercised against the live API yet.
+
+## Gate 2, first attempt (7 Nov 2026)
+- Navy ribbed henley cami (spaghetti straps): **failed safety screening twice** (19 s, 18 s), refunded. Credits still 13.
+- Photo reuse confirmed: the second attempt sent no new upload (one `tryon_photos` row at 14:12, none at 14:13).
+- Pattern so far: everything that would show a lot of generated skin has failed (mini dress, strapless slit maxi, strappy cami). Off-shoulder top, cropped jacket, jeans and leather mini passed.
+- Actions: cami set to `tryon_enabled: false` in the seed. Failed try-ons now show LookLab's own copy, because the provider text mentions "credits". Untested risky pieces (backless cowl halter, satin maxi with slit) stay enabled but are kept out of the demo.
+- No successful try-ons in this attempt, so Gate 2 still needs 3 successes on 3 different products.
+
+## Gate 2: passed (7 Nov 2026)
+Ife browsed and ran these in the browser through LookLab's own route. Each product was loaded from the database by id with its own image and title.
+| Product | Result | Time | Notes |
+|---|---|---|---|
+| Burgundy leather cropped bomber (Gate 1) | success | 20 s | Faithful colour and sleeves |
+| Light-wash barrel-leg jeans | success | 19 s | Wash and wide leg accurate |
+| Chocolate leather belted jacket | success | 18 s | Shape good. Rendered darker than the product, and the belt is not visible |
+- **Photo reuse:** both new try-ons reused the photo uploaded at 14:12. No new uploads (3 upload rows in total for 6 try-on attempts).
+- Credits: 13 → 11. Total Clothsy spend so far is 9 of 20 (Day 1 matrix 4 + dress retest 0 + step 1.5 1 + Gate 1 2 + Gate 2 2).
