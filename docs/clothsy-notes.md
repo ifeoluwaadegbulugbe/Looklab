@@ -63,3 +63,34 @@ Confirm every SDK name below against node_modules/clothsy-ai types after install
 **(g) Catalogue images.** A normal product photo on a CDN is fine if it meets the URL rules. Nothing is stated about background or flat-lay vs on-model. The person photo should be a clear, full-length photo of one adult facing the camera, at about 1600 px.
 
 **(h) Credits.** No sandbox or test keys. Buy more by email.
+
+## Day 1 test matrix results (7 Nov 2026)
+One person photo (full-length, one adult, outdoors, 960×1280 JPEG). Garments were sent as uploaded image ids.
+Credits went from 20 to 16: 4 successes charged, 2 failures refunded automatically.
+
+| Garment | Result | Time | Quality |
+|---|---|---|---|
+| Top (pinstripe off-shoulder) | success | 21 s | Excellent. Neckline, buttons and pinstripe accurate. The lower half of the original dress is kept and reads as a skirt. |
+| Dress (draped mini, gold buckle) | **failed** | 23 s | "did not pass safety screening". Refunded. |
+| Jacket (cropped leather bomber) | success | 22 s | Excellent. Layered over the existing outfit; sleeves and colour faithful. |
+| Trousers (wide-leg jeans) | success | 20 s | Very good. The upper half of the dress is turned into a fitted top. |
+| Skirt (black faux-leather mini) | success | 17 s | Good, but the model turned the dress top into a **crop top showing the midriff**. It invents skin when it removes the dress. |
+| Shoes (mule heels) | **failed** | 17 s | "product didn't show up on your photo… may not show the item being worn". Refunded. |
+
+Findings:
+- **(c) answered:** a later `retrieve()` returns `status: success` again, but with a **different `resultUrl` each time** (signed URLs). → Re-fetching a URL for the Fitting Room is free. Always use the newest URL. Never treat a URL as an identifier.
+- Results are `image/jpeg`, about 250–270 KB, at the same size as the person photo (960×1280).
+- Latency is 17–23 s, consistent with "under 30 seconds".
+- **(d) answered:** tops, jackets, trousers and skirts work. Shoes don't (flat product photos aren't detected). Dresses are unproven: one failed safety screening. Test one more dress (1 credit) before deciding. Short or bodycon cuts may trigger the screening.
+- UX: lower-body garments replace the bottom of a dress and invent a top half. Photo guidance should say "works best if you're wearing a fitted top and trousers/skirt".
+- Catalogue decision: tops, jackets/coats, trousers/jeans, skirts. Dresses are on hold pending a retest. No shoes, bags or accessories.
+
+### Dress retest (7 Nov 2026)
+| Garment | Result | Time | Notes |
+|---|---|---|---|
+| Dress 2 (apricot strapless chiffon maxi, thigh slit) | **failed** | 22 s | "did not pass safety screening" again. Refunded. Credits still 16. |
+
+- Both dresses failed safety screening, while separates (top, jacket, jeans, skirt) all passed.
+- Both dresses would show a lot of generated skin: a mini length, then a strapless top with a thigh slit. Working hypothesis: the screening trips on skin the model has to invent, not on dresses as such. Unproven.
+- Failures cost nothing (refunded), so another dress test only costs a credit if it succeeds.
+- Decision for now: **no dresses in the catalogue.** If time allows, test one modest dress (sleeves, knee length or longer, no slit). Add dresses back only if it passes.
