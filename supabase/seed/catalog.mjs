@@ -184,4 +184,30 @@ export const PRODUCTS = [
     description: "Relaxed collared bomber with a buckled hem.",
     aesthetics: ["streetwear", "minimalist"], collections: ["streetwear-essentials", "weekend-fits"],
   },
+
+  // ---- Afro-inspired
+  {
+    slug: "green-mudcloth-wide-leg-culottes", title: "Green mudcloth-print wide-leg culottes", category: "trousers",
+    section: "women", colour: "green", file: "green-mudcloth-wide-leg-culottes.jpg",
+    description: "Flowing wide legs in a bold mudcloth-inspired print, finished with a tie waist.",
+    aesthetics: ["afro-inspired", "romantic"], collections: ["afro-inspired-style", "weekend-fits"],
+  },
+  {
+    slug: "indigo-tie-dye-corset-top", title: "Indigo tie-dye corset top with balloon sleeves", category: "tops",
+    section: "women", colour: "navy", file: "indigo-tie-dye-corset-top.jpg",
+    description: "Adire-style indigo dye, a structured corset waist and dramatic balloon sleeves.",
+    aesthetics: ["afro-inspired", "romantic"], collections: ["afro-inspired-style"],
+  },
+  {
+    slug: "rust-print-tiered-ruffle-midi-skirt", title: "Rust print tiered ruffle midi skirt", category: "skirts",
+    section: "women", colour: "red", file: "rust-print-tiered-ruffle-midi-skirt.jpg",
+    description: "Layer-on-layer ruffles in a rich rust and sage print with a tie waist.",
+    aesthetics: ["afro-inspired", "romantic"], collections: ["afro-inspired-style"],
+  },
+  {
+    slug: "mustard-mudcloth-wrap-peplum-top", title: "Mustard mudcloth-print wrap peplum top", category: "tops",
+    section: "women", colour: "yellow", file: "mustard-mudcloth-wrap-peplum-top.jpg",
+    description: "Black and mustard mudcloth print, an asymmetric wrap front and a gold statement button.",
+    aesthetics: ["afro-inspired", "old-money"], collections: ["afro-inspired-style"],
+  },
 ];

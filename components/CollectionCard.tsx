@@ -37,10 +37,10 @@ export function CollectionCard({ collection, products, index }: { collection: Co
 export function CategoryCard({ category, product }: { category: Category; product?: Product }) {
   return (
     <Link href={`/shop?category=${category.slug}`} className={`group relative flex h-40 items-end overflow-hidden rounded-card p-4 ${CATEGORY_TONE[category.slug] ?? "bg-lavender"} transition active:scale-[0.98] md:h-48`}>
-      <h3 className="relative z-10 font-display text-xl font-bold leading-tight">{category.name}</h3>
+      <h3 className="relative z-10 max-w-[55%] font-display text-xl font-bold leading-tight">{category.name}</h3>
       {product && (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={product.image_url} alt="" className="absolute -right-3 -top-2 h-[115%] w-3/5 rotate-6 object-contain mix-blend-multiply transition duration-300 group-hover:rotate-3" />
+        <img src={product.image_url} alt="" className="absolute -right-3 -top-2 z-0 h-[115%] w-1/2 rotate-6 object-contain mix-blend-multiply transition duration-300 group-hover:rotate-3" />
       )}
     </Link>
   );

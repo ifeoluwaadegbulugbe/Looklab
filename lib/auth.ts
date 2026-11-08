@@ -33,7 +33,7 @@ export async function sendEmailLink(email: string, next = "/saved"): Promise<{ m
 
 function friendly(message: string) {
   if (/rate|too many|security purposes/i.test(message)) {
-    return new Error("Too many emails sent just now. Please wait a minute and try again.");
+    return new Error("We've hit our email limit for the moment. Please try again in a little while. Your Fitting Room looks are still here.");
   }
   if (/invalid/i.test(message)) return new Error("That email address doesn't look right.");
   return new Error("We couldn't send the email. Please try again.");
