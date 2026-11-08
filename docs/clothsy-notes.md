@@ -128,3 +128,14 @@ Ife browsed and ran these in the browser through LookLab's own route. Each produ
 | Chocolate leather belted jacket | success | 18 s | Shape good. Rendered darker than the product, and the belt is not visible |
 - **Photo reuse:** both new try-ons reused the photo uploaded at 14:12. No new uploads (3 upload rows in total for 6 try-on attempts).
 - Credits: 13 → 11. Total Clothsy spend so far is 9 of 20 (Day 1 matrix 4 + dress retest 0 + step 1.5 1 + Gate 1 2 + Gate 2 2).
+
+## Decision: saving results (8 Nov 2026)
+Ife approved Save look. Basis: the API docs say "copy the image to your own storage if you need it for longer". The Terms and Privacy pages don't cover the API.
+Implementation: saving happens only on the user's action, and only for a signed-in (non-guest) account. Files go to the private `saved-looks/{user_id}/{look_id}.{ext}` bucket, stored **byte-identical** to the provider file so the embedded AI label survives (checked by `scripts/looks-test.mjs`). Results are fetched only from `*.fabricvton.com` over HTTPS with no redirects and a 10 MB cap. Delete look and Delete my data remove the files.
+
+## Outfit experiment: two garments in one image (8 Nov 2026)
+Combined flat-lay (pinstripe off-shoulder top above light-wash barrel jeans) sent as ONE garment image. Success in 21 s, **1 credit** (11 → 10).
+- Jeans: applied faithfully (wash, wide leg, waist).
+- Top: **blended, not replaced**. The original top's cowl neck and sleeves were kept, and the pinstripe became a corset-like waist panel. The off-shoulder neckline was lost. On its own (Day 1) the same top rendered almost perfectly.
+- Conclusion: a combined image costs 1 credit and dresses both halves, but upper-body fidelity drops. Layering (top, then bottom on the result) should keep both accurate, at 1 credit per piece.
+- **Shipped as experimental (8 Nov):** /outfit builder (one top or jacket + one trousers or skirt). The server fetches both catalogue images by product id, trims their backgrounds, stacks them on white with `sharp`, uploads the result (free) and runs ONE try-on, so 1 credit. Sessions store `outfit_product_ids`. The UI labels it "Experimental: tops may blend". A GARMENT_REJECTED on an outfit does not disable either product.

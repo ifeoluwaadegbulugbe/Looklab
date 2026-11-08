@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useFittingRoomCount } from "@/components/fitting-room/useFittingRoom";
+import { LogoMark } from "@/components/Logo";
 import { CompassIcon, HangerIcon, HeartIcon, HomeIcon, UserIcon } from "@/components/icons";
 
 const TABS = [
@@ -27,8 +28,9 @@ export function NavView({ pathname, count }: { pathname: string; count: number }
       {/* Desktop: top nav */}
       <header className="sticky top-0 z-30 hidden border-b border-ink/10 bg-bg/90 backdrop-blur md:block">
         <nav aria-label="Main" className="mx-auto flex h-16 max-w-6xl items-center gap-8 px-4">
-          <Link href="/" className="font-display text-2xl font-extrabold tracking-tight">
-            Look<span className="text-primary">Lab</span>
+          <Link href="/" className="flex items-center gap-2 font-display text-2xl font-extrabold tracking-tight">
+            <LogoMark className="size-8" />
+            <span>Look<span className="text-primary">Lab</span></span>
           </Link>
           <ul className="flex flex-1 items-center gap-1">
             {TABS.map(({ href, label }) => (
@@ -49,8 +51,9 @@ export function NavView({ pathname, count }: { pathname: string; count: number }
 
       {/* Mobile: compact top bar + bottom tab bar */}
       <header className="sticky top-0 z-30 flex h-14 items-center bg-bg/90 px-4 backdrop-blur md:hidden">
-        <Link href="/" className="font-display text-xl font-extrabold tracking-tight">
-          Look<span className="text-primary">Lab</span>
+        <Link href="/" className="flex items-center gap-2 font-display text-xl font-extrabold tracking-tight">
+          <LogoMark className="size-7" />
+          <span>Look<span className="text-primary">Lab</span></span>
         </Link>
       </header>
       <nav aria-label="Main" className="fixed inset-x-0 bottom-0 z-30 border-t border-ink/10 bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">

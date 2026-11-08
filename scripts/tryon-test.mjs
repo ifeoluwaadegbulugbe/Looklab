@@ -18,6 +18,8 @@ const GARMENTS = {
   trousers: "Mid-blue wide-leg high-rise jeans",
   skirt: "Black faux-leather mini skirt",
   shoes: "Burgundy patent pointed-toe mule heels",
+  // Full-outfit experiment: top + bottom combined into one flat-lay garment image (1 credit).
+  outfit: "Outfit: navy pinstripe off-shoulder top with light-wash barrel-leg jeans",
 };
 
 const args = process.argv.slice(2);

@@ -27,6 +27,9 @@ export default async function Home() {
           See it on <span className="text-butter">you</span> before you decide.
         </h1>
         <p className="mt-3 max-w-md text-white/80">Discover it. Try it. Make it yours. One photo, every piece, one tap each.</p>
+        <Link href="/outfit" className="mt-5 inline-flex min-h-12 items-center gap-2 rounded-full bg-butter px-6 font-semibold text-ink transition active:scale-[0.98]">
+          Build an outfit <span className="rounded-full bg-ink px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">New</span>
+        </Link>
 
         <h2 className="mt-8 text-sm font-semibold uppercase tracking-wider text-white/70">Try something on</h2>
         <ul className="no-scrollbar mt-3 flex gap-3 overflow-x-auto pb-1">

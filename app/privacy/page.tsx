@@ -60,9 +60,7 @@ export default function PrivacyPage() {
         <section>
           <h2>Deleting your data</h2>
           <p>
-            Your try-on records only matter for 24 hours. To remove everything LookLab holds about you sooner, contact the team.
-            A one-tap &ldquo;Delete my data&rdquo; button in Me is on the way. It removes our records only; Clothsy&apos;s copy of the
-            photo follows the up-to-35-day rule above.
+            Go to <a href="/me" className="underline">Me</a> and tap <strong>Delete my data</strong>. It permanently removes your try-on history, saved looks and their images, hearts, picks and your anonymous account from LookLab. Clothsy&apos;s copy of your photo follows the up-to-35-day rule above.
           </p>
         </section>
       </div>

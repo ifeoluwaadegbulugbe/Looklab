@@ -8,7 +8,7 @@ export const maxDuration = 60;
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Start a try-on. multipart/form-data: productId, requestId, consent="true", optional photo (JPEG/PNG ≤ 4 MB). */
+/** Start a try-on. multipart/form-data: productId, optional outfitWith (second product id, experimental outfit), requestId, consent="true", optional photo (JPEG/PNG ≤ 4 MB). */
 export async function POST(request: Request) {
   if (!isSameOrigin(request)) return jsonError(403, "FORBIDDEN_ORIGIN", "Request refused.");
 
@@ -23,11 +23,15 @@ export async function POST(request: Request) {
   }
 
   const productId = form.get("productId");
+  const outfitWith = form.get("outfitWith");
   const requestId = form.get("requestId");
   const consent = form.get("consent");
   const photo = form.get("photo");
 
   if (typeof productId !== "string" || !UUID_RE.test(productId)) {
+    return jsonError(400, "INVALID_REQUEST", "Please try again.");
+  }
+  if (outfitWith !== null && (typeof outfitWith !== "string" || !UUID_RE.test(outfitWith) || outfitWith === productId)) {
     return jsonError(400, "INVALID_REQUEST", "Please try again.");
   }
   if (typeof requestId !== "string" || !REQUEST_ID_RE.test(requestId)) {
@@ -55,7 +59,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await startTryOn({ userId: user.id, productId, requestId, photo: photoInput });
+    const result = await startTryOn({ userId: user.id, productIds: outfitWith ? [productId, outfitWith] : [productId], requestId, photo: photoInput });
     if (!result.ok) {
       return jsonError(result.httpStatus, result.code, result.message, { retryAfter: result.retryAfter, sessionId: result.sessionId });
     }

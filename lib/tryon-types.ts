@@ -18,6 +18,9 @@ export type TryOnErrorCode =
   | "RATE_LIMITED"
   | "UNAVAILABLE"
   | "NOT_FOUND"
+  | "ACCOUNT_REQUIRED"
+  | "NOT_READY"
+  | "EXPIRED"
   | "UNKNOWN";
 
 export type TryOnStatus = "pending" | "success" | "failed";

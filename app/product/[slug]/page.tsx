@@ -87,6 +87,12 @@ async function ProductDetail({ params }: { params: Promise<{ slug: string }> }) 
             )}
           </div>
 
+          {product.tryon_enabled && ["tops", "jackets", "trousers", "skirts"].includes(product.category?.slug ?? "") && (
+            <Link href={`/outfit?with=${product.slug}`} className="inline-flex min-h-11 items-center gap-2 self-start font-semibold underline underline-offset-4">
+              Style it into an outfit <span className="rounded-full bg-butter px-2 py-0.5 text-[10px] font-bold uppercase">Experimental</span>
+            </Link>
+          )}
+
           <p className="rounded-2xl bg-surface p-4 text-sm">
             <strong>AI preview, not a fit guarantee.</strong> Try-ons show how a piece could look on you. They can&apos;t
             predict size, fit or how the fabric moves. This is a demo catalogue item: no brand, price or shop link.

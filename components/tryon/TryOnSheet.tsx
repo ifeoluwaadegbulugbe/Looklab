@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { ensureUser } from "@/lib/supabase/browser";
 import { PhotoError, preparePhoto } from "@/lib/photo";
+import { getLocalPhoto, setLocalPhoto } from "@/lib/local-photo";
 import { notifyFittingRoom } from "@/components/fitting-room/useFittingRoom";
+import { SaveLookButton } from "@/components/looks/SaveLookButton";
 import type { StartTryOnResponse, TryOnErrorBody, TryOnErrorCode, TryOnStatusResponse } from "@/lib/tryon-types";
 
 export interface TryOnProduct {
@@ -16,7 +18,7 @@ type Step =
   | { kind: "form"; notice?: string }
   | { kind: "generating"; sessionId: string }
   | { kind: "slow"; sessionId: string }
-  | { kind: "result"; resultUrl: string }
+  | { kind: "result"; resultUrl: string; sessionId: string }
   | { kind: "error"; code: TryOnErrorCode; message: string };
 
 const POLL_MS = 2500;
@@ -27,8 +29,6 @@ const STATUS_LINES = ["Reading your photo…", "Fitting the garment…", "Matchi
 export const CONSENT_TEXT =
   "I'm 18 or over, this is a photo of me, and I agree to it being processed by Clothsy AI to create a virtual try-on.";
 
-// The shopper's photo lives only in memory for this tab: never uploaded anywhere except the try-on, never stored.
-let localPhoto: { blob: Blob; url: string } | null = null;
 
 const storage = {
   get(key: string) {
@@ -53,7 +53,20 @@ const sleep = (ms: number, signal: AbortSignal) =>
     signal.addEventListener("abort", () => { clearTimeout(t); reject(new DOMException("aborted", "AbortError")); }, { once: true });
   });
 
-export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduct; triggerClassName?: string }) {
+export function TryOnSheet({
+  product,
+  outfitWith,
+  triggerClassName,
+  triggerLabel,
+}: {
+  product: TryOnProduct;
+  /** Experimental outfit: a second (lower) piece tried on together with `product` for one credit. */
+  outfitWith?: TryOnProduct;
+  triggerClassName?: string;
+  triggerLabel?: string;
+}) {
+  const tryKey = outfitWith ? `${product.id}+${outfitWith.id}` : product.id;
+  const displayTitle = outfitWith ? `${product.title} + ${outfitWith.title}` : product.title;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const pollAbort = useRef<AbortController | null>(null);
   const ids = { title: useId(), file: useId(), consent: useId() };
@@ -71,7 +84,7 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
     const ac = new AbortController();
     pollAbort.current = ac;
     setStep({ kind: "generating", sessionId });
-    storage.set(ACTIVE_KEY, JSON.stringify({ sessionId, productId: product.id }));
+    storage.set(ACTIVE_KEY, JSON.stringify({ sessionId, productId: tryKey }));
     const started = Date.now();
     try {
       while (!ac.signal.aborted) {
@@ -92,7 +105,7 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
             const data = (await res.json()) as TryOnStatusResponse;
             if (data.status === "success" && data.resultUrl) {
               storage.remove(ACTIVE_KEY);
-              setStep({ kind: "result", resultUrl: data.resultUrl });
+              setStep({ kind: "result", resultUrl: data.resultUrl, sessionId });
               notifyFittingRoom();
               return;
             }
@@ -115,7 +128,7 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
     } catch (e) {
       if ((e as Error).name !== "AbortError") throw e;
     }
-  }, [product.id]);
+  }, [tryKey]);
 
   // Rotate status copy while generating.
   useEffect(() => {
@@ -142,13 +155,13 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
     const reusable = canReusePhoto();
     setReuse(reusable);
     setNewPhoto(null);
-    setPreview(reusable && localPhoto ? localPhoto.url : null);
+    setPreview(reusable ? getLocalPhoto()?.url ?? null : null);
     setStep({ kind: "form" });
     dialogRef.current?.showModal();
     // Recover a try-on that was running when the tab was closed or the sheet dismissed.
     try {
       const active = JSON.parse(storage.get(ACTIVE_KEY) ?? "null") as { sessionId: string; productId: string } | null;
-      if (active?.productId === product.id) void poll(active.sessionId);
+      if (active?.productId === tryKey) void poll(active.sessionId);
     } catch {}
   }
 
@@ -187,6 +200,7 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
       await ensureUser();
       const form = new FormData();
       form.append("productId", product.id);
+      if (outfitWith) form.append("outfitWith", outfitWith.id);
       form.append("requestId", requestId);
       form.append("consent", "true");
       if (newPhoto) form.append("photo", newPhoto, "photo.jpg");
@@ -207,8 +221,7 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
         const data = (await res.json()) as StartTryOnResponse;
         storage.set(PHOTO_KEY, data.photoExpiresAt);
         if (newPhoto) {
-          if (localPhoto && localPhoto.url !== preview) URL.revokeObjectURL(localPhoto.url);
-          localPhoto = { blob: newPhoto, url: preview! };
+          setLocalPhoto(newPhoto, preview!);
           setNewPhoto(null); // next try-on reuses the uploaded photo id instead of uploading again
           setReuse(true);
         }
@@ -241,7 +254,7 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
         onClick={open}
         className={triggerClassName ?? "min-h-12 rounded-full bg-[#6C2BFF] px-6 font-semibold text-white focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-[#6C2BFF]"}
       >
-        Try it on
+        {triggerLabel ?? "Try it on"}
       </button>
 
       <dialog
@@ -253,8 +266,11 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
         <div className="max-h-[90dvh] overflow-y-auto p-6">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h2 id={ids.title} className="text-xl font-bold">Try it on</h2>
-              <p className="text-sm opacity-70">{product.title}</p>
+              <h2 id={ids.title} className="text-xl font-bold">{outfitWith ? "Try the outfit on" : "Try it on"}</h2>
+              <p className="text-sm opacity-70">{displayTitle}</p>
+              {outfitWith && (
+                <p className="mt-1 inline-block -rotate-2 rounded-full bg-butter px-3 py-0.5 text-xs font-bold">Experimental: both pieces, 1 try-on. Tops may blend with what you&apos;re wearing.</p>
+              )}
             </div>
             <button type="button" onClick={close} aria-label="Close" className="grid size-12 place-items-center rounded-full text-2xl hover:bg-black/5">×</button>
           </div>
@@ -340,15 +356,17 @@ export function TryOnSheet({ product, triggerClassName }: { product: TryOnProduc
             <figure className="flex flex-col gap-3">
               <div className="relative overflow-hidden rounded-3xl">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={step.resultUrl} alt={`AI-generated preview of you wearing the ${product.title}`} className="looklab-reveal w-full" />
+                <img src={step.resultUrl} alt={`AI-generated preview of you wearing the ${outfitWith ? `outfit: ${displayTitle}` : product.title}`} className="looklab-reveal w-full" />
                 <span className="absolute left-3 top-3 rounded-full bg-[#1A1325] px-3 py-1 text-xs font-semibold text-white">AI-generated try-on</span>
               </div>
               <figcaption className="text-sm opacity-80">
-                AI-generated try-on. A preview, not a guarantee of fit, size or how the fabric behaves.
+                AI-generated try-on. A preview, not a guarantee of fit, size or how the fabric behaves.{outfitWith ? " Outfit try-ons are experimental and may blend pieces." : ""}
               </figcaption>
               <div className="flex flex-wrap gap-3">
                 <button type="button" onClick={() => { setConsent(false); setReuse(canReusePhoto()); setStep({ kind: "form" }); }} className="min-h-12 rounded-full border-2 border-[#1A1325] px-6 font-semibold">Change photo</button>
                 <button type="button" onClick={close} className="min-h-12 rounded-full bg-[#6C2BFF] px-6 font-semibold text-white">Keep browsing</button>
+                <SaveLookButton sessionId={step.sessionId} />
+                <a href="/fitting-room" className="inline-flex min-h-12 items-center rounded-full px-4 font-semibold underline">Compare in Fitting Room</a>
               </div>
             </figure>
           )}

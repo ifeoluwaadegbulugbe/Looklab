@@ -3,6 +3,7 @@ import { getClothsy } from "@/lib/clothsy/client";
 import { logTryOnError, mapClothsyError, type MappedError } from "@/lib/clothsy/errors";
 import { getAdminSupabase } from "@/lib/supabase/admin";
 import { checkQuota } from "@/lib/quota";
+import { composeOutfit, LOWER_CATEGORIES, outfitTitle, UPPER_CATEGORIES } from "@/lib/outfit";
 import type { StartTryOnResponse, TryOnErrorCode, TryOnStatusResponse } from "@/lib/tryon-types";
 
 const PHOTO_TTL_MS = 24 * 60 * 60 * 1000;
@@ -20,7 +21,8 @@ const fromMapped = (m: MappedError) => fail(m.httpStatus, m.code, m.message, { r
 
 export interface StartInput {
   userId: string;
-  productId: string;
+  /** One product, or two for an experimental outfit (one upper + one lower piece). */
+  productIds: string[];
   requestId: string;
   /** Present when the shopper added a new photo; absent to reuse the last one. */
   photo?: { bytes: Uint8Array; contentType: "image/jpeg" | "image/png" };
@@ -33,7 +35,7 @@ export interface StartInput {
  */
 export async function startTryOn(input: StartInput): Promise<ServiceResult<StartTryOnResponse>> {
   const db = getAdminSupabase();
-  const { userId, productId, requestId } = input;
+  const { userId, productIds, requestId } = input;
 
   // Idempotent retry of the same click: return the session it already created.
   const { data: sameReq } = await db.from("try_on_sessions")
@@ -55,13 +57,43 @@ export async function startTryOn(input: StartInput): Promise<ServiceResult<Start
   const quota = await checkQuota(userId);
   if (!quota.ok) return fail(quota.httpStatus, quota.code, quota.message);
 
-  const { data: product } = await db.from("products")
-    .select("id,title,image_url,tryon_enabled").eq("id", productId).maybeSingle();
-  if (!product || !product.tryon_enabled) {
-    return fail(404, "PRODUCT_UNAVAILABLE", "This item isn't available for virtual try-on.");
+  // Garment(s) always come from the database by id. Never URLs or titles from the browser.
+  const { data: rows } = await db.from("products")
+    .select("id,title,image_url,tryon_enabled,category:categories(slug)").in("id", productIds);
+  type Row = { id: string; title: string; image_url: string; tryon_enabled: boolean; category: { slug: string } | null };
+  const found = (rows ?? []) as unknown as Row[];
+  if (found.length !== productIds.length || found.some((p) => !p.tryon_enabled)) {
+    return fail(404, "PRODUCT_UNAVAILABLE", productIds.length > 1 ? "One of those pieces isn't available for virtual try-on." : "This item isn't available for virtual try-on.");
   }
+  const isOutfit = found.length === 2;
+  let upper = found[0];
+  let lower: Row | undefined;
+  if (isOutfit) {
+    const inCat = (p: Row, cats: readonly string[]) => !!p.category && cats.includes(p.category.slug);
+    const u = found.find((p) => inCat(p, UPPER_CATEGORIES));
+    const l = found.find((p) => inCat(p, LOWER_CATEGORIES));
+    if (!u || !l) return fail(400, "INVALID_REQUEST", "An outfit needs one top or jacket and one pair of trousers or a skirt.");
+    upper = u;
+    lower = l;
+  }
+  const product = upper;
 
   const clothsy = getClothsy();
+
+  // Experimental outfit: compose both catalogue images into one flat-lay and upload it (free).
+  let garment: { url: string } | { imageId: string } = { url: product.image_url };
+  let title = product.title.slice(0, 120);
+  if (isOutfit && lower) {
+    try {
+      const bytes = await composeOutfit(upper.image_url, lower.image_url);
+      const uploaded = await clothsy.images.upload(new Blob([bytes as BlobPart], { type: "image/jpeg" }), { filename: "outfit.jpg", contentType: "image/jpeg" });
+      garment = { imageId: uploaded.id };
+      title = outfitTitle(upper.title, lower.title);
+    } catch (e) {
+      logTryOnError("outfit", e);
+      return fail(500, "UNKNOWN", "We couldn't put that outfit together. Please try again.");
+    }
+  }
 
   // Photo: upload the new one (free) or reuse the newest id that is still safely valid.
   let photo: { id: string; imageId: string; expiresAt: string };
@@ -94,7 +126,11 @@ export async function startTryOn(input: StartInput): Promise<ServiceResult<Start
 
   // Claim the single pending slot. The unique indexes reject double clicks and replays.
   const { data: session, error: claimErr } = await db.from("try_on_sessions")
-    .insert({ user_id: userId, product_id: product.id, request_id: requestId, status: "pending" })
+    .insert({
+      user_id: userId, product_id: product.id, request_id: requestId, status: "pending",
+      // Only outfits write this column, so single try-ons keep working even before the outfits migration.
+      ...(isOutfit && lower ? { outfit_product_ids: [upper.id, lower.id] } : {}),
+    })
     .select("id").single();
   if (claimErr || !session) {
     if (claimErr?.code === "23505") {
@@ -110,8 +146,8 @@ export async function startTryOn(input: StartInput): Promise<ServiceResult<Start
   try {
     const created = await clothsy.tryons.create({
       person: { imageId: photo.imageId },
-      garment: { url: product.image_url },
-      title: product.title.slice(0, 120),
+      garment,
+      title,
       consent: true,
       idempotencyKey: requestId,
     });
@@ -122,7 +158,7 @@ export async function startTryOn(input: StartInput): Promise<ServiceResult<Start
     const mapped = mapClothsyError(e);
     await finishFailed(session.id, mapped);
     if (mapped.code === "PHOTO_REQUIRED") await db.from("tryon_photos").delete().eq("id", photo.id);
-    if (mapped.code === "GARMENT_REJECTED") await db.from("products").update({ tryon_enabled: false }).eq("id", product.id);
+    if (mapped.code === "GARMENT_REJECTED" && !isOutfit) await db.from("products").update({ tryon_enabled: false }).eq("id", product.id);
     return fromMapped(mapped);
   }
 }

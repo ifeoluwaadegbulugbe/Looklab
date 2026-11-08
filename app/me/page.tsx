@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { DeleteMyData } from "@/components/me/DeleteMyData";
+import { AccountCard } from "@/components/me/AccountCard";
 
 export const metadata: Metadata = { title: "Me" };
 
@@ -14,7 +16,7 @@ export default function MePage() {
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pb-8 pt-4">
       <h1 className="font-display text-4xl font-extrabold tracking-tight">Me</h1>
-      <p className="mt-1 opacity-80">No account needed to browse or try things on.</p>
+      <AccountCard />
       <ul className="mt-6 flex flex-col gap-3">
         {ROWS.map((r) => (
           <li key={r.href}>
@@ -25,6 +27,7 @@ export default function MePage() {
           </li>
         ))}
       </ul>
+      <DeleteMyData />
     </main>
   );
 }
