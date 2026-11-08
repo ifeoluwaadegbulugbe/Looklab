@@ -18,7 +18,7 @@ type Step =
   | { kind: "form"; notice?: string }
   | { kind: "generating"; sessionId: string }
   | { kind: "slow"; sessionId: string }
-  | { kind: "result"; resultUrl: string; sessionId: string }
+  | { kind: "result"; resultUrl: string; sessionId: string; message?: string }
   | { kind: "error"; code: TryOnErrorCode; message: string };
 
 const POLL_MS = 2500;
@@ -78,6 +78,7 @@ export function TryOnSheet({
   const [consent, setConsent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [statusLine, setStatusLine] = useState(0);
+  const [layer, setLayer] = useState(1);
 
   const poll = useCallback(async (sessionId: string) => {
     pollAbort.current?.abort();
@@ -103,9 +104,10 @@ export function TryOnSheet({
             }
           } else {
             const data = (await res.json()) as TryOnStatusResponse;
+            if (data.step) setLayer(data.step);
             if (data.status === "success" && data.resultUrl) {
               storage.remove(ACTIVE_KEY);
-              setStep({ kind: "result", resultUrl: data.resultUrl, sessionId });
+              setStep({ kind: "result", resultUrl: data.resultUrl, sessionId, message: data.message });
               notifyFittingRoom();
               return;
             }
@@ -269,7 +271,7 @@ export function TryOnSheet({
               <h2 id={ids.title} className="text-xl font-bold">{outfitWith ? "Try the outfit on" : "Try it on"}</h2>
               <p className="text-sm opacity-70">{displayTitle}</p>
               {outfitWith && (
-                <p className="mt-1 inline-block -rotate-2 rounded-full bg-butter px-3 py-0.5 text-xs font-bold">Experimental: both pieces, 1 try-on. Tops may blend with what you&apos;re wearing.</p>
+                <p className="mt-1 inline-block -rotate-2 rounded-full bg-butter px-3 py-0.5 text-xs font-bold">Layered outfit: the top goes on first, then the bottom. Uses 2 try-ons.</p>
               )}
             </div>
             <button type="button" onClick={close} aria-label="Close" className="grid size-12 place-items-center rounded-full text-2xl hover:bg-black/5">×</button>
@@ -339,10 +341,14 @@ export function TryOnSheet({
                 <div aria-hidden className="looklab-scan absolute inset-x-0 h-1 bg-[#6C2BFF] shadow-[0_0_24px_8px_rgba(108,43,255,0.5)]" />
               </div>
               <p role="status" aria-live="polite" className="font-semibold">
-                {step.kind === "slow" ? "This one is taking a while. It's still working." : STATUS_LINES[statusLine]}
+                {step.kind === "slow"
+                  ? "This one is taking a while. It's still working."
+                  : outfitWith
+                    ? layer === 1 ? `Step 1 of 2: putting on the ${product.title}…` : `Step 2 of 2: adding the ${outfitWith.title}…`
+                    : STATUS_LINES[statusLine]}
               </p>
               <p className="text-sm opacity-70">
-                {step.kind === "slow" ? "You can check again now, or come back later. It won't be charged twice." : "Usually under 30 seconds."}
+                {step.kind === "slow" ? "You can check again now, or come back later. It won't be charged twice." : outfitWith ? "Usually under a minute." : "Usually under 30 seconds."}
               </p>
               {step.kind === "slow" ? (
                 <button type="button" onClick={() => void poll(step.sessionId)} className="min-h-12 rounded-full border-2 border-[#1A1325] px-6 font-semibold">Check again</button>
@@ -359,8 +365,9 @@ export function TryOnSheet({
                 <img src={step.resultUrl} alt={`AI-generated preview of you wearing the ${outfitWith ? `outfit: ${displayTitle}` : product.title}`} className="looklab-reveal w-full" />
                 <span className="absolute left-3 top-3 rounded-full bg-[#1A1325] px-3 py-1 text-xs font-semibold text-white">AI-generated try-on</span>
               </div>
+              {step.message && <p role="status" className="rounded-2xl bg-butter/60 p-3 text-sm">{step.message}</p>}
               <figcaption className="text-sm opacity-80">
-                AI-generated try-on. A preview, not a guarantee of fit, size or how the fabric behaves.{outfitWith ? " Outfit try-ons are experimental and may blend pieces." : ""}
+                AI-generated try-on. A preview, not a guarantee of fit, size or how the fabric behaves.
               </figcaption>
               <div className="flex flex-wrap gap-3">
                 <button type="button" onClick={() => { setConsent(false); setReuse(canReusePhoto()); setStep({ kind: "form" }); }} className="min-h-12 rounded-full border-2 border-[#1A1325] px-6 font-semibold">Change photo</button>

@@ -118,7 +118,7 @@ function Look({ item, selected, onToggle }: { item: FittingRoomItem; selected: b
         ) : (
           <span className="text-sm font-semibold">{title}</span>
         )}
-        {item.status === "failed" && item.message && <p className="mt-1 text-xs opacity-70">{item.message}</p>}
+        {item.message && <p className="mt-1 text-xs opacity-70">{item.message}</p>}
         {item.status === "success" && <SaveLookButton sessionId={item.id} className="mt-2 min-h-11 w-full px-3 text-sm" />}
         {item.status === "success" && onToggle && (
           <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm font-semibold">

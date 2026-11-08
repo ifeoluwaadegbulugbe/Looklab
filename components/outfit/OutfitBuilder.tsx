@@ -53,7 +53,7 @@ function TryButton({ upper, lower }: { upper: OutfitPiece | null; lower: OutfitP
       key={`${upper.id}+${lower.id}`}
       product={{ id: upper.id, title: upper.title, imageUrl: upper.imageUrl }}
       outfitWith={{ id: lower.id, title: lower.title, imageUrl: lower.imageUrl }}
-      triggerLabel="Try the outfit on · 1 try-on"
+      triggerLabel="Try the outfit on · 2 try-ons"
       triggerClassName="min-h-12 w-full rounded-full bg-primary px-6 font-semibold text-white shadow-lg transition active:scale-[0.98]"
     />
   );

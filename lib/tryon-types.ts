@@ -41,6 +41,8 @@ export interface StartTryOnResponse {
 export interface TryOnStatusResponse {
   status: TryOnStatus;
   resultUrl: string | null;
+  /** Layered outfits only: which layer is being added (1 = top, 2 = bottom). */
+  step?: number;
   code?: TryOnErrorCode;
   message?: string;
 }

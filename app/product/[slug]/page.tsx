@@ -89,7 +89,7 @@ async function ProductDetail({ params }: { params: Promise<{ slug: string }> }) 
 
           {product.tryon_enabled && ["tops", "jackets", "trousers", "skirts"].includes(product.category?.slug ?? "") && (
             <Link href={`/outfit?with=${product.slug}`} className="inline-flex min-h-11 items-center gap-2 self-start font-semibold underline underline-offset-4">
-              Style it into an outfit <span className="rounded-full bg-butter px-2 py-0.5 text-[10px] font-bold uppercase">Experimental</span>
+              Style it into an outfit
             </Link>
           )}
 
